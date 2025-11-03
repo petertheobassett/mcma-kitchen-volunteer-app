@@ -105,7 +105,8 @@ export async function POST(req) {
     });
 
     const [year, month, day] = eventDate.split('-').map(Number);
-    const parsedEventDate = new Date(year, month - 1, day);
+    // Create date at noon PST to avoid timezone conversion issues
+    const parsedEventDate = new Date(year, month - 1, day, 12, 0, 0);
     const formattedEventDate = parsedEventDate.toLocaleDateString('en-US', {
       timeZone: 'America/Los_Angeles',
       weekday: 'long',
