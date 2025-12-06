@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.2] – 2025-12-06
+### Security
+- 🛡️ **CRITICAL**: Updated Next.js from 15.3.2 to 15.3.6 (fixes CVE-2025-66478)
+- 🛡️ **CRITICAL**: Updated React from 19.0.0 to 19.0.1 (fixes CVE-2025-55182)
+- 🛡️ Updated React-DOM from 19.0.0 to 19.0.1
+
+### Fixed
+- 📅 Fixed email confirmation date formatting to show correct event date instead of day before
+
+## [1.1.1] – 2025-11-03
+### Fixed
+- 📅 Fixed email confirmation date formatting issue where timezone conversion caused emails to show the day before the actual event date
+
 ## [1.1.0] – 2025-05-16
 ### Added
 - ✅ Inline checkmark animation when a volunteer is confirmed

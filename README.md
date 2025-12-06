@@ -1,13 +1,19 @@
-# MCMA Kitchen Volunteer App – Version 1.0
+# MCMA Kitchen Volunteer App – Version 1.1.2
 
 A polished, mobile-friendly volunteer scheduling and attendance app built using **Next.js**, **Tailwind CSS**, and Google Sheets as the backend.
 
+## 🛡️ Security Update (December 6, 2025)
+**IMPORTANT**: Updated to address critical React Server Components vulnerability:
+- **Next.js**: 15.3.2 → 15.3.6 (fixes CVE-2025-66478)
+- **React**: 19.0.0 → 19.0.1 (fixes CVE-2025-55182)
+- All users should update immediately
+
 ---
 
-## ✅ Version 1.0 – Feature Summary
+## ✅ Version 1.1.2 – Current Feature Summary
 
 ### 🛠️ Initial Setup
-- Built using **Next.js 15.3.2**
+- Built using **Next.js 15.3.6** (security patched)
 - Styled with **Tailwind CSS**
 - Hosted on **Vercel**
 - Backend data powered by **Google Sheets API** via service account
