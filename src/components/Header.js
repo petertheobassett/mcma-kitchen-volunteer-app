@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 
 export default function Header({ autoCollapse = false }) {
   const [open, setOpen] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
 
   // Collapse menu on navigation
   useEffect(() => {
@@ -19,6 +20,18 @@ export default function Header({ autoCollapse = false }) {
 
   const handleToggle = () => setOpen(prev => !prev);
 
+  async function handleLogout() {
+    if (loggingOut) return;
+    setLoggingOut(true);
+    try {
+      await fetch('/api/admin/logout', { method: 'POST' });
+    } catch (error) {
+      console.error('Logout error:', error);
+    } finally {
+      window.location.href = '/admin/login';
+    }
+  }
+
   return (
     <header style={headerStyle}>
       <div style={stickyWrapper}>
@@ -33,6 +46,9 @@ export default function Header({ autoCollapse = false }) {
             <Link href="/signup" style={linkStyle}>Volunteer Signup</Link>
             <Link href="/admin/review-signups" style={linkStyle}>Review Signups</Link>
             <Link href="/" style={linkStyle}>Dashboard</Link>
+            <button onClick={handleLogout} style={logoutButtonStyle} disabled={loggingOut}>
+              {loggingOut ? 'Signing out...' : 'Sign Out'}
+            </button>
           </nav>
         )}
       </div>
@@ -105,4 +121,14 @@ const linkStyle = {
   textDecoration: 'none',
   padding: '8px 24px',
   fontSize: '0.95em',
+};
+
+const logoutButtonStyle = {
+  color: '#fff',
+  textAlign: 'left',
+  background: 'transparent',
+  border: 'none',
+  padding: '8px 24px',
+  fontSize: '0.95em',
+  cursor: 'pointer',
 };

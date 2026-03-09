@@ -11,7 +11,13 @@ export default function Home() {
 
   useEffect(() => {
     fetch('/api/get-events')
-      .then(res => res.json())
+      .then(res => {
+        if (res.status === 401) {
+          window.location.href = '/admin/login?next=/';
+          return [];
+        }
+        return res.json();
+      })
       .then(data => {
         setEvents(data || []);
         setLoading(false);
@@ -29,18 +35,32 @@ export default function Home() {
       body: JSON.stringify({
         row,
         index,
-        checked: checked ? '👍' : ''
+        checked
       }),
     })
-    .then(res => res.json())
+    .then(res => {
+      if (res.status === 401) {
+        window.location.href = '/admin/login?next=/';
+        return { status: 'UNAUTHORIZED' };
+      }
+      return res.json();
+    })
     .then(data => {
+      if (data.status === 'UNAUTHORIZED') return;
+
       if (data.status === 'OK') {
         setUpdatedRow(row);
         setUpdatedMessage('Attendance saved ✔');
 
         // ✅ Re-fetch the updated event data
         fetch('/api/get-events')
-          .then(res => res.json())
+          .then(res => {
+            if (res.status === 401) {
+              window.location.href = '/admin/login?next=/';
+              return [];
+            }
+            return res.json();
+          })
           .then(data => setEvents(data || []));
       } else {
         setUpdatedRow(row);

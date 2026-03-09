@@ -1,11 +1,19 @@
 import { google } from 'googleapis';
 import { Resend } from 'resend';
+import {
+  escapeHtml,
+  escapeIcsText,
+  formatUsPhone,
+  isIsoDate,
+  normalizeEmail,
+  normalizeText,
+  sanitizeForSheetCell,
+} from '@/lib/input-security';
+import { rateLimit } from '@/lib/rate-limit';
 
-function formatPhone(phone) {
-  const digits = phone.replace(/\D/g, '');
-  if (digits.length !== 10) throw new Error('Invalid phone number');
-  return `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6)}`;
-}
+const RECAPTCHA_ACTION = 'submit';
+const CAPTCHA_TOKEN_MAX_AGE_MS = 5 * 60 * 1000;
+const DEFAULT_CAPTCHA_SCORE_THRESHOLD = 0.5;
 
 function generateICS({ eventName, eventDate, name, email }) {
   const now = new Date();
@@ -15,7 +23,7 @@ function generateICS({ eventName, eventDate, name, email }) {
   const startMinute = 30;
   const startDate = new Date(year, month - 1, day, startHour, startMinute);
   const endDate = new Date(startDate.getTime() + 3 * 60 * 60 * 1000);
-  const format = (d) => d.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+  const format = (date) => date.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
 
   return `
 BEGIN:VCALENDAR
@@ -27,10 +35,10 @@ BEGIN:VEVENT
 DTSTART:${format(startDate)}
 DTEND:${format(endDate)}
 DTSTAMP:${format(now)}
-SUMMARY:MCMA Kitchen – ${eventName}
-DESCRIPTION:Thanks for volunteering, ${name}!
-ORGANIZER;CN=MCMA Kitchen:mailto:${process.env.ADMIN_EMAIL}
-ATTENDEE;CN=${name};RSVP=TRUE:mailto:${email}
+SUMMARY:MCMA Kitchen - ${escapeIcsText(eventName)}
+DESCRIPTION:Thanks for volunteering, ${escapeIcsText(name)}!
+ORGANIZER;CN=MCMA Kitchen:mailto:${escapeIcsText(process.env.ADMIN_EMAIL || '')}
+ATTENDEE;CN=${escapeIcsText(name)};RSVP=TRUE:mailto:${escapeIcsText(email)}
 LOCATION:MCMA Kitchen
 UID:${Date.now()}@mcmakitchen.org
 STATUS:CONFIRMED
@@ -47,11 +55,11 @@ function getGoogleCalendarURL({ eventName, eventDate, name }) {
   const startMinute = 30;
   const start = new Date(year, month - 1, day, startHour, startMinute);
   const end = new Date(start.getTime() + 3 * 60 * 60 * 1000);
-  const format = (d) => d.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+  const format = (date) => date.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
 
   const params = new URLSearchParams({
     action: 'TEMPLATE',
-    text: `MCMA Kitchen – ${eventName}`,
+    text: `MCMA Kitchen - ${eventName}`,
     dates: `${format(start)}/${format(end)}`,
     details: `Volunteer sign-up for ${eventName}. Thanks, ${name}!`,
     location: 'MCMA Kitchen',
@@ -60,11 +68,88 @@ function getGoogleCalendarURL({ eventName, eventDate, name }) {
   return `https://www.google.com/calendar/render?${params.toString()}`;
 }
 
-export async function POST(req) {
+function getClientIp(request) {
+  const forwardedFor = request.headers.get('x-forwarded-for');
+  if (forwardedFor) return forwardedFor.split(',')[0].trim();
+  return request.headers.get('x-real-ip') || 'unknown-ip';
+}
+
+function isAllowedCaptchaHostname(hostname) {
+  const configured = (process.env.RECAPTCHA_ALLOWED_HOSTNAMES || '')
+    .split(',')
+    .map((host) => host.trim().toLowerCase())
+    .filter(Boolean);
+
+  if (configured.length === 0) return true;
+  return configured.includes(String(hostname || '').toLowerCase());
+}
+
+function hasFreshCaptchaTimestamp(challengeTimestamp) {
+  if (!challengeTimestamp) return false;
+  const issuedAt = Date.parse(challengeTimestamp);
+  if (Number.isNaN(issuedAt)) return false;
+  const ageMs = Date.now() - issuedAt;
+  return ageMs >= 0 && ageMs <= CAPTCHA_TOKEN_MAX_AGE_MS;
+}
+
+function findEventMatch(rows, eventName, eventDate) {
+  const normalize = (value) => (value || '').replace(/\s+/g, ' ').trim().toLowerCase();
+  const volunteerColumns = [5, 7, 9, 11, 13, 15];
+  const normalizedEventName = normalize(eventName);
+  const toIsoDate = (value) => {
+    if (!value) return '';
+    if (!Number.isNaN(Number(value))) {
+      const base = new Date(1899, 11, 30);
+      const parsed = new Date(base.getTime() + Number(value) * 24 * 60 * 60 * 1000);
+      return Number.isNaN(parsed.getTime()) ? '' : parsed.toISOString().slice(0, 10);
+    }
+    const [year, month, day] = String(value).split('-').map(Number);
+    if (!year || !month || !day) return '';
+    const parsed = new Date(year, month - 1, day);
+    return Number.isNaN(parsed.getTime()) ? '' : parsed.toISOString().slice(0, 10);
+  };
+
+  const match = rows.find((row) => {
+    const rowDate = toIsoDate(row[0]);
+    const rowName = normalize(row[1]);
+    return rowDate === eventDate && rowName === normalizedEventName;
+  });
+
+  if (!match) return { found: false, spotsLeft: 0 };
+
+  const filledSpots = volunteerColumns.reduce((count, column) => {
+    return match[column]?.trim() ? count + 1 : count;
+  }, 0);
+
+  return {
+    found: true,
+    spotsLeft: Math.max(0, 6 - filledSpots),
+  };
+}
+
+export async function POST(request) {
+  const clientIp = getClientIp(request);
+  const limiter = rateLimit({
+    key: `signup:${clientIp}`,
+    limit: 8,
+    windowMs: 10 * 60 * 1000,
+  });
+
+  if (!limiter.allowed) {
+    return Response.json({ error: 'Too many signup attempts. Please try again later.' }, { status: 429 });
+  }
+
   try {
-    const { eventName, eventDate, name, phone, email, token } = await req.json();
-    if (!eventName || !eventDate || !name || !phone || !email || !token) {
-      return new Response(JSON.stringify({ error: 'Missing fields' }), { status: 400 });
+    const body = await request.json();
+    const eventName = normalizeText(body?.eventName, 150);
+    const eventDate = typeof body?.eventDate === 'string' ? body.eventDate.trim() : '';
+    const name = normalizeText(body?.name, 100);
+    const formattedPhone = formatUsPhone(body?.phone);
+    const email = normalizeEmail(body?.email);
+    const token = normalizeText(body?.token, 5000);
+
+    if (!eventName || !isIsoDate(eventDate) || !name || !formattedPhone || !email || !token) {
+      return Response.json({ error: 'Invalid signup fields' }, { status: 400 });
     }
 
     const captchaRes = await fetch('https://www.google.com/recaptcha/api/siteverify', {
@@ -75,23 +160,52 @@ export async function POST(req) {
         response: token,
       }),
     });
-    const captchaResult = await captchaRes.json();
-    if (!captchaResult.success || captchaResult.score < 0.5) {
-      console.warn('⚠️ CAPTCHA verification failed', { captchaResult });
-      return new Response(JSON.stringify({ error: 'Failed CAPTCHA verification' }), { status: 403 });
+
+    if (!captchaRes.ok) {
+      return Response.json({ error: 'CAPTCHA verification unavailable' }, { status: 502 });
     }
 
-    const formattedPhone = formatPhone(phone);
+    const captchaResult = await captchaRes.json();
+    const scoreThreshold = Number(process.env.RECAPTCHA_MIN_SCORE || DEFAULT_CAPTCHA_SCORE_THRESHOLD);
+    const hasValidScore = typeof captchaResult.score === 'number' && captchaResult.score >= scoreThreshold;
+    const hasValidAction = captchaResult.action === RECAPTCHA_ACTION;
+    const hasValidHostname = isAllowedCaptchaHostname(captchaResult.hostname);
+    const hasValidTimestamp = hasFreshCaptchaTimestamp(captchaResult.challenge_ts);
+
+    if (!captchaResult.success || !hasValidScore || !hasValidAction || !hasValidHostname || !hasValidTimestamp) {
+      console.warn('CAPTCHA verification failed', {
+        success: captchaResult.success,
+        action: captchaResult.action,
+        hostname: captchaResult.hostname,
+        score: captchaResult.score,
+      });
+      return Response.json({ error: 'Failed CAPTCHA verification' }, { status: 403 });
+    }
 
     const auth = new google.auth.JWT(
       process.env.GOOGLE_CLIENT_EMAIL,
       null,
-      process.env.GOOGLE_PRIVATE_KEY.replace(/\n/g, '\n'),
+      process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n'),
       ['https://www.googleapis.com/auth/spreadsheets']
     );
 
     const sheets = google.sheets({ version: 'v4', auth });
     const sheetId = process.env.GOOGLE_SHEET_ID;
+
+    const eventsResponse = await sheets.spreadsheets.values.get({
+      spreadsheetId: sheetId,
+      range: '2025 Schedule of Events!A2:Q1000',
+    });
+
+    const eventRows = eventsResponse.data.values || [];
+    const eventMatch = findEventMatch(eventRows, eventName, eventDate);
+    if (!eventMatch.found) {
+      return Response.json({ error: 'Selected event is no longer available' }, { status: 400 });
+    }
+    if (eventMatch.spotsLeft <= 0) {
+      return Response.json({ error: 'Selected event is full' }, { status: 409 });
+    }
+
     const now = new Date();
     const formattedTimestamp = now.toLocaleString('en-US', {
       timeZone: 'America/Los_Angeles',
@@ -105,7 +219,6 @@ export async function POST(req) {
     });
 
     const [year, month, day] = eventDate.split('-').map(Number);
-    // Create date at noon PST to avoid timezone conversion issues
     const parsedEventDate = new Date(year, month - 1, day, 12, 0, 0);
     const formattedEventDate = parsedEventDate.toLocaleDateString('en-US', {
       timeZone: 'America/Los_Angeles',
@@ -116,18 +229,18 @@ export async function POST(req) {
     });
 
     const newRow = [
-      formattedTimestamp,
-      eventName,
-      eventDate,
-      name,
-      formattedPhone,
-      email,
+      sanitizeForSheetCell(formattedTimestamp),
+      sanitizeForSheetCell(eventName),
+      sanitizeForSheetCell(eventDate),
+      sanitizeForSheetCell(name),
+      sanitizeForSheetCell(formattedPhone),
+      sanitizeForSheetCell(email),
     ];
 
     await sheets.spreadsheets.values.append({
       spreadsheetId: sheetId,
       range: 'Volunteer Signups!A:F',
-      valueInputOption: 'USER_ENTERED',
+      valueInputOption: 'RAW',
       insertDataOption: 'INSERT_ROWS',
       requestBody: {
         values: [newRow],
@@ -137,13 +250,18 @@ export async function POST(req) {
     const resend = new Resend(process.env.RESEND_API_KEY);
     const calendarICS = generateICS({ eventName, eventDate, name, email });
     const googleCalendarLink = getGoogleCalendarURL({ eventName, eventDate, name });
-
     const logo = 'https://mcma.s3.us-east-1.amazonaws.com/mcmaLogo.png';
     const adminEmail = process.env.ADMIN_EMAIL || 'hello@mcmakitchen.com';
 
-    const volunteerHeading = "Thank you for signing up!";
+    const htmlEventName = escapeHtml(eventName);
+    const htmlName = escapeHtml(name);
+    const htmlPhone = escapeHtml(formattedPhone);
+    const htmlEmail = escapeHtml(email);
+    const htmlFormattedEventDate = escapeHtml(formattedEventDate);
+
+    const volunteerHeading = 'Thank you for signing up!';
     const volunteerIntro = `<p style="font-size:14px; color:#444; text-align:center; max-width:360px; margin:0 auto 24px;">
-      We're excited to have you join us in the kitchen!  Below are the details of the volunteer shift you signed up for. We'll confirm with you shortly.
+      We are excited to have you join us in the kitchen. Below are the details of your volunteer shift.
     </p>`;
 
     const volunteerHTML = `
@@ -153,11 +271,11 @@ export async function POST(req) {
         </div>
         ${volunteerIntro}
         <h2 style="text-align:center; color:#000;">${volunteerHeading}</h2>
-        <p><strong>Event:</strong> ${eventName}</p>
-        <p><strong>Date:</strong> ${formattedEventDate}</p>
-        <p><strong>Name:</strong> ${name}</p>
-        <p><strong>Phone:</strong> ${formattedPhone}</p>
-        <p><strong>Email:</strong> <a href="mailto:${email}" style="color:#007bff; text-decoration:none;">${email}</a></p>
+        <p><strong>Event:</strong> ${htmlEventName}</p>
+        <p><strong>Date:</strong> ${htmlFormattedEventDate}</p>
+        <p><strong>Name:</strong> ${htmlName}</p>
+        <p><strong>Phone:</strong> ${htmlPhone}</p>
+        <p><strong>Email:</strong> <a href="mailto:${htmlEmail}" style="color:#007bff; text-decoration:none;">${htmlEmail}</a></p>
         <div style="margin-top:24px; display:flex; gap:8px;">
           <a href="${googleCalendarLink}" style="background:#007bff; color:#fff; padding:10px 16px; text-decoration:none; border-radius:6px; font-weight:bold;">Add to Google Calendar</a>
           <a href="cid:calendar" style="background:#333; color:#fff; padding:10px 16px; text-decoration:none; border-radius:6px; font-weight:bold;">Add to Apple Calendar</a>
@@ -165,7 +283,7 @@ export async function POST(req) {
       </div>
     `;
 
-    const adminHeading = "Someone just signed up to help.";
+    const adminHeading = 'Someone just signed up to help.';
     const adminHTML = volunteerHTML
       .replace(volunteerIntro, '')
       .replace(volunteerHeading, adminHeading);
@@ -183,7 +301,7 @@ Email: ${email}
     await resend.emails.send({
       from: process.env.EMAIL_FROM,
       to: email,
-      subject: `MCMA Kitchen – Thanks for signing up to help at the ${eventName} ${formattedEventDate}`,
+      subject: `MCMA Kitchen - Thanks for signing up for ${eventName} on ${formattedEventDate}`,
       html: volunteerHTML,
       text: plainText,
       reply_to: adminEmail,
@@ -207,13 +325,12 @@ Email: ${email}
       reply_to: adminEmail,
     });
 
-    return new Response(JSON.stringify({
+    return Response.json({
       status: 'OK',
-      submitted: { eventName, formattedEventDate, name, formattedPhone, email }
-    }), { status: 200 });
-
-  } catch (err) {
-    console.error('❌ Signup Error:', err);
-    return new Response(JSON.stringify({ error: err.message }), { status: 500 });
+      submitted: { eventName, formattedEventDate, name, formattedPhone, email },
+    });
+  } catch (error) {
+    console.error('Signup error:', error);
+    return Response.json({ error: 'Unable to process signup' }, { status: 500 });
   }
 }

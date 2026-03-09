@@ -1,8 +1,26 @@
 import { google } from 'googleapis';
+import { requireAdmin } from '@/lib/admin-auth';
 
 export async function POST(req) {
+  const unauthorized = requireAdmin(req);
+  if (unauthorized) return unauthorized;
+
   try {
     const { row, index, checked } = await req.json();
+    const parsedRow = Number(row);
+    const parsedIndex = Number(index);
+
+    if (
+      !Number.isInteger(parsedRow) ||
+      !Number.isInteger(parsedIndex) ||
+      parsedRow < 2 ||
+      parsedRow > 1000 ||
+      parsedIndex < 18 ||
+      parsedIndex > 23 ||
+      typeof checked !== 'boolean'
+    ) {
+      return Response.json({ error: 'Invalid attendance payload' }, { status: 400 });
+    }
 
     const auth = new google.auth.JWT(
       process.env.GOOGLE_CLIENT_EMAIL,
@@ -14,12 +32,7 @@ export async function POST(req) {
     const sheets = google.sheets({ version: 'v4', auth });
     const sheetId = process.env.GOOGLE_SHEET_ID;
     const sheetName = '2025 Schedule of Events';
-
-    if (index > 23) {
-      return new Response(JSON.stringify({ error: 'Column index exceeds sheet width' }), { status: 400 });
-    }
-
-    const cell = `${sheetName}!${columnToLetter(index)}${row}`;
+    const cell = `${sheetName}!${columnToLetter(parsedIndex)}${parsedRow}`;
 
     await sheets.spreadsheets.values.update({
       spreadsheetId: sheetId,
@@ -33,7 +46,7 @@ export async function POST(req) {
     return new Response(JSON.stringify({ status: 'OK', cell }), { status: 200 });
   } catch (err) {
     console.error('❌ Google Sheets error:', err);
-    return new Response(JSON.stringify({ error: err.message, stack: err.stack }), {
+    return new Response(JSON.stringify({ error: 'Failed to update attendance' }), {
       status: 500,
     });
   }

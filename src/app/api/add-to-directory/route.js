@@ -1,10 +1,18 @@
 import { google } from 'googleapis';
+import { requireAdmin } from '@/lib/admin-auth';
+import { formatUsPhone, normalizeEmail, normalizeText, sanitizeForSheetCell } from '@/lib/input-security';
 
 export async function POST(req) {
-  try {
-    const { name, phone, email } = await req.json();
+  const unauthorized = requireAdmin(req);
+  if (unauthorized) return unauthorized;
 
-    if (!name || !phone || !email) {
+  try {
+    const body = await req.json();
+    const name = normalizeText(body?.name, 100);
+    const formattedPhone = formatUsPhone(body?.phone);
+    const email = normalizeEmail(body?.email);
+
+    if (!name || !formattedPhone || !email) {
       return Response.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
@@ -34,22 +42,22 @@ export async function POST(req) {
     const updates = [
       {
         range: `Volunteer Directory!A${sheetRow}`,
-        values: [[name]],
+        values: [[sanitizeForSheetCell(name)]],
       },
       {
         range: `Volunteer Directory!B${sheetRow}`,
-        values: [[phone]],
+        values: [[sanitizeForSheetCell(formattedPhone)]],
       },
       {
         range: `Volunteer Directory!C${sheetRow}`,
-        values: [[email]],
+        values: [[sanitizeForSheetCell(email)]],
       },
     ];
 
-    const result = await sheets.spreadsheets.values.batchUpdate({
+    await sheets.spreadsheets.values.batchUpdate({
       spreadsheetId,
       requestBody: {
-        valueInputOption: 'USER_ENTERED',
+        valueInputOption: 'RAW',
         data: updates,
       },
     });
@@ -60,6 +68,6 @@ export async function POST(req) {
     });
   } catch (err) {
     console.error('❌ add-to-directory error:', err);
-    return Response.json({ error: err.message || 'Unknown error' }, { status: 500 });
+    return Response.json({ error: 'Failed to update volunteer directory' }, { status: 500 });
   }
 }

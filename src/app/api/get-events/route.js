@@ -1,11 +1,15 @@
 import { google } from 'googleapis';
+import { requireAdmin } from '@/lib/admin-auth';
 
-export async function GET() {
+export async function GET(request) {
+  const unauthorized = requireAdmin(request);
+  if (unauthorized) return unauthorized;
+
   try {
     const auth = new google.auth.JWT(
       process.env.GOOGLE_CLIENT_EMAIL,
       null,
-      process.env.GOOGLE_PRIVATE_KEY.replace(/\n/g, '\n'),
+      process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n'),
       ['https://www.googleapis.com/auth/spreadsheets.readonly']
     );
 

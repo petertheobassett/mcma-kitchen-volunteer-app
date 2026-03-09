@@ -1,6 +1,10 @@
 import { google } from 'googleapis';
+import { requireAdmin } from '@/lib/admin-auth';
 
-export async function GET() {
+export async function GET(request) {
+  const unauthorized = requireAdmin(request);
+  if (unauthorized) return unauthorized;
+
   try {
     const auth = new google.auth.GoogleAuth({
       credentials: {
@@ -114,7 +118,7 @@ export async function GET() {
     return Response.json(enriched);
   } catch (err) {
     console.error('❌ signups-overview error:', err);
-    return new Response(JSON.stringify({ error: err.message }), {
+    return new Response(JSON.stringify({ error: 'Failed to fetch signups overview' }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' },
     });

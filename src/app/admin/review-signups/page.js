@@ -15,6 +15,10 @@ export default function ReviewSignupsPage() {
   const fetchSignups = async () => {
     try {
       const res = await fetch('/api/signups-overview');
+      if (res.status === 401) {
+        window.location.href = '/admin/login?next=/admin/review-signups';
+        return;
+      }
       const data = await res.json();
 
       if (!Array.isArray(data)) {
@@ -47,6 +51,10 @@ export default function ReviewSignupsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: vol.name, phone: vol.phone, email: vol.email }),
       });
+      if (dirRes.status === 401) {
+        window.location.href = '/admin/login?next=/admin/review-signups';
+        return;
+      }
 
       const dirResult = await dirRes.json();
       const dirMsg = dirResult.phoneUpdated
@@ -65,6 +73,10 @@ export default function ReviewSignupsPage() {
           eventDate: vol.eventDate,
         }),
       });
+      if (confirmRes.status === 401) {
+        window.location.href = '/admin/login?next=/admin/review-signups';
+        return;
+      }
 
       const confirmResult = await confirmRes.json();
       const confirmMsg = confirmResult.message || 'Confirmed';
