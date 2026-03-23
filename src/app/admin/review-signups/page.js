@@ -12,6 +12,9 @@ export default function ReviewSignupsPage() {
   const [fadingRows, setFadingRows] = useState([]);
   const [confirmedRows, setConfirmedRows] = useState([]);
 
+  const getSignupKey = (vol) =>
+    `${vol.name}-${vol.phone}-${vol.eventDate}-${vol.event}-${vol.date}`;
+
   const fetchSignups = async () => {
     try {
       const res = await fetch('/api/signups-overview');
@@ -27,7 +30,7 @@ export default function ReviewSignupsPage() {
         return;
       }
 
-      setSignups(data);
+      setSignups([...data].reverse());
     } catch (err) {
       console.error('❌ Network or parse error:', err);
       setStatusRow(null);
@@ -41,7 +44,7 @@ export default function ReviewSignupsPage() {
   }, []);
 
   const handleConfirm = async (vol, row) => {
-    const key = `${vol.name}-${vol.phone}`;
+    const key = getSignupKey(vol);
     setStatusRow(row);
     setStatusMessage('⏳ Updating contact info...');
 
@@ -148,9 +151,9 @@ export default function ReviewSignupsPage() {
         </div>
 
         {signups
-          .filter((vol) => !removedRows.includes(`${vol.name}-${vol.phone}`))
+          .filter((vol) => !removedRows.includes(getSignupKey(vol)))
           .map((vol, i) => {
-            const key = `${vol.name}-${vol.phone}`;
+            const key = getSignupKey(vol);
             const isFading = fadingRows.includes(key);
             const isConfirmed = confirmedRows.includes(key);
 

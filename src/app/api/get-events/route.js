@@ -1,24 +1,18 @@
-import { google } from 'googleapis';
 import { requireAdmin } from '@/lib/admin-auth';
+import { createSheetsClient, getEventsSheetName, getSheetRange } from '@/lib/google-sheets';
 
 export async function GET(request) {
   const unauthorized = requireAdmin(request);
   if (unauthorized) return unauthorized;
 
   try {
-    const auth = new google.auth.JWT(
-      process.env.GOOGLE_CLIENT_EMAIL,
-      null,
-      process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n'),
-      ['https://www.googleapis.com/auth/spreadsheets.readonly']
-    );
-
-    const sheets = google.sheets({ version: 'v4', auth });
+    const sheets = createSheetsClient(['https://www.googleapis.com/auth/spreadsheets.readonly']);
     const sheetId = process.env.GOOGLE_SHEET_ID;
+    const eventsSheetName = await getEventsSheetName(sheets, sheetId);
 
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId: sheetId,
-      range: '2025 Schedule of Events!A2:Z1000', // ✅ Includes attendance columns R–W
+      range: getSheetRange(eventsSheetName, 'A2:Z1000'),
     });
 
     const rows = response.data.values || [];

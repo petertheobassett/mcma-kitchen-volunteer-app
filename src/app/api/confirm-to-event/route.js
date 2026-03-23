@@ -1,5 +1,5 @@
-import { google } from 'googleapis';
 import { requireAdmin } from '@/lib/admin-auth';
+import { createSheetsClient, getEventsSheetName, getSheetRange } from '@/lib/google-sheets';
 import {
   formatUsPhone,
   isIsoDate,
@@ -22,17 +22,10 @@ export async function POST(req) {
       return Response.json({ error: 'Invalid required fields' }, { status: 400 });
     }
 
-    const auth = new google.auth.GoogleAuth({
-      credentials: {
-        client_email: process.env.GOOGLE_CLIENT_EMAIL,
-        private_key: process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n'),
-      },
-      scopes: ['https://www.googleapis.com/auth/spreadsheets'],
-    });
-
-    const sheets = google.sheets({ version: 'v4', auth });
+    const sheets = createSheetsClient(['https://www.googleapis.com/auth/spreadsheets']);
     const spreadsheetId = process.env.GOOGLE_SHEET_ID;
-    const range = '2025 Schedule of Events!A1:Q1000';
+    const eventsSheetName = await getEventsSheetName(sheets, spreadsheetId);
+    const range = getSheetRange(eventsSheetName, 'A1:Q1000');
 
     const result = await sheets.spreadsheets.values.get({ spreadsheetId, range });
     const rows = result.data.values;
@@ -91,11 +84,11 @@ export async function POST(req) {
         valueInputOption: 'RAW',
         data: [
           {
-            range: `2025 Schedule of Events!${nameCol}${sheetRow}`,
+            range: getSheetRange(eventsSheetName, `${nameCol}${sheetRow}`),
             values: [[sanitizeForSheetCell(name)]],
           },
           {
-            range: `2025 Schedule of Events!${phoneCol}${sheetRow}`,
+            range: getSheetRange(eventsSheetName, `${phoneCol}${sheetRow}`),
             values: [[sanitizeForSheetCell(phone)]],
           },
         ],

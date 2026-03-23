@@ -1,5 +1,5 @@
-import { google } from 'googleapis';
 import { requireAdmin } from '@/lib/admin-auth';
+import { createSheetsClient, getEventsSheetName, getSheetRange } from '@/lib/google-sheets';
 
 export async function POST(req) {
   const unauthorized = requireAdmin(req);
@@ -22,17 +22,10 @@ export async function POST(req) {
       return Response.json({ error: 'Invalid attendance payload' }, { status: 400 });
     }
 
-    const auth = new google.auth.JWT(
-      process.env.GOOGLE_CLIENT_EMAIL,
-      null,
-      process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n'),
-      ['https://www.googleapis.com/auth/spreadsheets']
-    );
-
-    const sheets = google.sheets({ version: 'v4', auth });
+    const sheets = createSheetsClient(['https://www.googleapis.com/auth/spreadsheets']);
     const sheetId = process.env.GOOGLE_SHEET_ID;
-    const sheetName = '2025 Schedule of Events';
-    const cell = `${sheetName}!${columnToLetter(parsedIndex)}${parsedRow}`;
+    const sheetName = await getEventsSheetName(sheets, sheetId);
+    const cell = getSheetRange(sheetName, `${columnToLetter(parsedIndex)}${parsedRow}`);
 
     await sheets.spreadsheets.values.update({
       spreadsheetId: sheetId,

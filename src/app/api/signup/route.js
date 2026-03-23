@@ -1,4 +1,3 @@
-import { google } from 'googleapis';
 import { Resend } from 'resend';
 import {
   escapeHtml,
@@ -10,6 +9,7 @@ import {
   sanitizeForSheetCell,
 } from '@/lib/input-security';
 import { rateLimit } from '@/lib/rate-limit';
+import { createSheetsClient, getEventsSheetName, getSheetRange } from '@/lib/google-sheets';
 
 const RECAPTCHA_ACTION = 'submit';
 const CAPTCHA_TOKEN_MAX_AGE_MS = 5 * 60 * 1000;
@@ -182,19 +182,13 @@ export async function POST(request) {
       return Response.json({ error: 'Failed CAPTCHA verification' }, { status: 403 });
     }
 
-    const auth = new google.auth.JWT(
-      process.env.GOOGLE_CLIENT_EMAIL,
-      null,
-      process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n'),
-      ['https://www.googleapis.com/auth/spreadsheets']
-    );
-
-    const sheets = google.sheets({ version: 'v4', auth });
+    const sheets = createSheetsClient(['https://www.googleapis.com/auth/spreadsheets']);
     const sheetId = process.env.GOOGLE_SHEET_ID;
+    const eventsSheetName = await getEventsSheetName(sheets, sheetId);
 
     const eventsResponse = await sheets.spreadsheets.values.get({
       spreadsheetId: sheetId,
-      range: '2025 Schedule of Events!A2:Q1000',
+      range: getSheetRange(eventsSheetName, 'A2:Q1000'),
     });
 
     const eventRows = eventsResponse.data.values || [];

@@ -1,26 +1,19 @@
-import { google } from 'googleapis';
 import { requireAdmin } from '@/lib/admin-auth';
+import { createSheetsClient, getEventsSheetName } from '@/lib/google-sheets';
 
 export async function GET(request) {
   const unauthorized = requireAdmin(request);
   if (unauthorized) return unauthorized;
 
   try {
-    const auth = new google.auth.GoogleAuth({
-      credentials: {
-        client_email: process.env.GOOGLE_CLIENT_EMAIL,
-        private_key: process.env.GOOGLE_PRIVATE_KEY.replace(/\n/g, '\n'),
-      },
-      scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly'],
-    });
-
-    const sheets = google.sheets({ version: 'v4', auth });
+    const sheets = createSheetsClient(['https://www.googleapis.com/auth/spreadsheets.readonly']);
     const spreadsheetId = process.env.GOOGLE_SHEET_ID;
+    const eventsSheetName = await getEventsSheetName(sheets, spreadsheetId);
 
     const [signupsRes, directoryRes, eventsRes] = await Promise.all([
       sheets.spreadsheets.values.get({ spreadsheetId, range: 'Volunteer Signups' }),
       sheets.spreadsheets.values.get({ spreadsheetId, range: 'Volunteer Directory' }),
-      sheets.spreadsheets.values.get({ spreadsheetId, range: '2025 Schedule of Events' }),
+      sheets.spreadsheets.values.get({ spreadsheetId, range: eventsSheetName }),
     ]);
 
     const signups = signupsRes.data.values?.slice(1) || [];
@@ -82,10 +75,11 @@ export async function GET(request) {
     };
 
     const enriched = signups.map(([timestamp, eventName, eventDate, name, phone, email]) => {
-      const normalizedName = normalize(name);
-      const directoryRow = directory.find(row =>
-        normalize(row[0]) === normalizedName
-      );
+      const safeName = (name || '').trim();
+      const safePhone = (phone || '').trim();
+      const safeEmail = (email || '').trim();
+      const normalizedName = normalize(safeName);
+      const directoryRow = directory.find((row) => normalize(row[0]) === normalizedName);
 
       const currentPhone = directoryRow?.[1]?.trim() || '';
       const currentEmail = directoryRow?.[2]?.trim() || '';
@@ -94,17 +88,17 @@ export async function GET(request) {
 
       const needsDirectoryUpdate =
         isInDirectory &&
-        (currentPhone !== phone.trim() || currentEmail !== email.trim());
+        (currentPhone !== safePhone || currentEmail !== safeEmail);
 
-      const history = getVolunteerHistory(name);
+      const history = getVolunteerHistory(safeName);
       const spotsLeft = getSpotsLeft(eventName, eventDate);
 
       return {
-        name,
-        phone,
-        email,
-        event: eventName,
-        date: timestamp,
+        name: safeName,
+        phone: safePhone,
+        email: safeEmail,
+        event: eventName || '',
+        date: timestamp || '',
         eventDate: toISODate(eventDate),
         rating,
         isInDirectory,
