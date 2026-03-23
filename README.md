@@ -12,6 +12,15 @@ A polished, mobile-friendly volunteer scheduling and attendance app built using 
 
 ## ✅ Version 1.1.2 – Current Feature Summary
 
+### 🔄 Admin Dashboard & Google Sheets Reliability (3/23/2026)
+- Added a shared Google Sheets helper so admin and signup routes use the same service-account auth handling
+- Normalized `GOOGLE_PRIVATE_KEY` parsing to support escaped newline values in environment variables
+- Admin signup review now tolerates incomplete historical signup rows instead of failing the whole dashboard response
+- `Schedule of Events` sheet selection now supports the current matching tab automatically, with optional `GOOGLE_EVENTS_SHEET_NAME` override
+- Review Signups now renders newest entries first and uses unique per-signup keys so rows do not collide on the dashboard
+
+---
+
 ### 🛠️ Initial Setup
 - Built using **Next.js 15.3.6** (security patched)
 - Styled with **Tailwind CSS**
@@ -41,7 +50,7 @@ A polished, mobile-friendly volunteer scheduling and attendance app built using 
 ---
 
 ### 🔐 Security & Trust
-- **hCaptcha** integration protects form from spam
+- **Google reCAPTCHA** integration protects form from spam
 - **Privacy and Terms disclaimer** added
 - Basic **error logging** built in for form and API
 
@@ -87,7 +96,7 @@ A polished, mobile-friendly volunteer scheduling and attendance app built using 
 - **Frontend:** Next.js, Tailwind CSS
 - **Backend:** Google Sheets API (via service account)
 - **Email:** Resend API
-- **Security:** hCaptcha
+- **Security:** Google reCAPTCHA
 - **Hosting:** Vercel
 
 ---
