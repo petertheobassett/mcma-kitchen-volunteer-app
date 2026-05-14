@@ -39,12 +39,13 @@ export async function GET() {
           return cell?.trim() ? count + 1 : count;
         }, 0);
 
-        const spotsLeft = 6 - filledSpots;
+        const spotsLeft = Math.max(0, 6 - filledSpots);
+        const spotsLeftLabel = spotsLeft === 1 ? '1 spot left' : `${spotsLeft} spots left`;
 
         return {
           name: name.trim(),
           date: `${parsed.getFullYear()}-${mm}-${dd}`,
-          label: `${parsed.toDateString()} – ${name.trim()}${spotsLeft === 0 ? ' (FULL)' : ''}`,
+          label: `${parsed.toDateString()} – ${name.trim()} (${spotsLeft === 0 ? 'FULL' : spotsLeftLabel})`,
           spotsLeft,
         };
       })
