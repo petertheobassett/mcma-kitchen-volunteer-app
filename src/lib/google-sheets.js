@@ -2,6 +2,10 @@ import { google } from 'googleapis';
 
 const LEGACY_EVENTS_SHEET_NAME = '2025 Schedule of Events';
 const SCHEDULE_SHEET_PATTERN = /(?:^|\b)(\d{4})?\s*Schedule of Events$/i;
+const DEFAULT_SIGNUPS_SHEET_NAME = 'Volunteer Signups';
+const SIGNUPS_SHEET_PATTERN = /^Volunteer Signups?$/i;
+const DEFAULT_DIRECTORY_SHEET_NAME = 'Volunteer Directory';
+const DIRECTORY_SHEET_PATTERN = /^Volunteer Directory$/i;
 
 function stripWrappingQuotes(value) {
   if (
@@ -35,14 +39,8 @@ export async function getEventsSheetName(sheets, spreadsheetId) {
   const configuredName = process.env.GOOGLE_EVENTS_SHEET_NAME?.trim();
   if (configuredName) return configuredName;
 
-  const metadata = await sheets.spreadsheets.get({
-    spreadsheetId,
-    fields: 'sheets.properties.title',
-  });
-
-  const candidates = (metadata.data.sheets || [])
-    .map((sheet) => sheet.properties?.title?.trim())
-    .filter(Boolean)
+  const titles = await getSheetTitles(sheets, spreadsheetId);
+  const candidates = titles
     .map((title) => {
       const match = title.match(SCHEDULE_SHEET_PATTERN);
       if (!match) return null;
@@ -67,6 +65,51 @@ export async function getEventsSheetName(sheets, spreadsheetId) {
   if (latestDatedSheet) return latestDatedSheet.title;
 
   return candidates[0].title;
+}
+
+export async function getVolunteerSignupsSheetName(sheets, spreadsheetId) {
+  return getNamedSheet({
+    sheets,
+    spreadsheetId,
+    configuredName: process.env.GOOGLE_SIGNUPS_SHEET_NAME?.trim(),
+    fallbackName: DEFAULT_SIGNUPS_SHEET_NAME,
+    pattern: SIGNUPS_SHEET_PATTERN,
+  });
+}
+
+export async function getVolunteerDirectorySheetName(sheets, spreadsheetId) {
+  return getNamedSheet({
+    sheets,
+    spreadsheetId,
+    configuredName: process.env.GOOGLE_DIRECTORY_SHEET_NAME?.trim(),
+    fallbackName: DEFAULT_DIRECTORY_SHEET_NAME,
+    pattern: DIRECTORY_SHEET_PATTERN,
+  });
+}
+
+async function getNamedSheet({
+  sheets,
+  spreadsheetId,
+  configuredName,
+  fallbackName,
+  pattern,
+}) {
+  if (configuredName) return configuredName;
+
+  const titles = await getSheetTitles(sheets, spreadsheetId);
+  const match = titles.find((title) => pattern.test(title));
+  return match || fallbackName;
+}
+
+async function getSheetTitles(sheets, spreadsheetId) {
+  const metadata = await sheets.spreadsheets.get({
+    spreadsheetId,
+    fields: 'sheets.properties.title',
+  });
+
+  return (metadata.data.sheets || [])
+    .map((sheet) => sheet.properties?.title?.trim())
+    .filter(Boolean);
 }
 
 export function getSheetRange(sheetName, range) {

@@ -12,8 +12,7 @@ export default function ReviewSignupsPage() {
   const [fadingRows, setFadingRows] = useState([]);
   const [confirmedRows, setConfirmedRows] = useState([]);
 
-  const getSignupKey = (vol) =>
-    `${vol.name}-${vol.phone}-${vol.eventDate}-${vol.event}-${vol.date}`;
+  const getSignupKey = (vol) => vol.id;
 
   const fetchSignups = async () => {
     try {

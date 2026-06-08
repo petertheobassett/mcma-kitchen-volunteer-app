@@ -15,7 +15,8 @@ export async function GET() {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    const volunteerCols = [5, 7, 9, 11, 13, 15];
+    const volunteersNeededIndex = 3;
+    const volunteerCols = [6, 8, 10, 12, 14, 16];
 
     const events = rows
       .map((row) => {
@@ -34,12 +35,17 @@ export async function GET() {
         parsedMidnight.setHours(0, 0, 0, 0);
         if (parsedMidnight < today) return null;
 
+        const requestedVolunteers = Number.parseInt(String(row[volunteersNeededIndex] || '').trim(), 10);
+        const volunteersNeeded = Number.isFinite(requestedVolunteers)
+          ? Math.max(0, Math.min(volunteerCols.length, requestedVolunteers))
+          : volunteerCols.length;
+
         const filledSpots = volunteerCols.reduce((count, col) => {
           const cell = row[col];
           return cell?.trim() ? count + 1 : count;
         }, 0);
 
-        const spotsLeft = Math.max(0, 6 - filledSpots);
+        const spotsLeft = Math.max(0, volunteersNeeded - filledSpots);
         const spotsLeftLabel = spotsLeft === 1 ? '1 spot left' : `${spotsLeft} spots left`;
 
         return {

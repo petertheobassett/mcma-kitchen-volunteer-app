@@ -19,6 +19,19 @@ A polished, mobile-friendly volunteer scheduling and attendance app built using 
 - `Schedule of Events` sheet selection now supports the current matching tab automatically, with optional `GOOGLE_EVENTS_SHEET_NAME` override
 - Review Signups now renders newest entries first and uses unique per-signup keys so rows do not collide on the dashboard
 
+### 📊 Spreadsheet Layout Notes (6/8/2026)
+- The app now expects the event schedule sheet to use this column layout:
+  - `A` = Event date
+  - `B` = Event name
+  - `C` = Expected attendees
+  - `D` = `VOLUNTEERS NEEDED`
+  - `E/F` = Kitchen lead and lead phone
+  - `G/H, I/J, K/L, M/N, O/P, Q/R` = Volunteer 1-6 name/phone pairs
+  - `S:X` = Volunteer 1-6 attendance markers
+- Volunteer availability is calculated from `VOLUNTEERS NEEDED`, so events can now require fewer than six volunteer slots
+- The schedule tab may be named either `Schedule of Events` or a year-prefixed variant such as `2026 Schedule of Events`
+- Signup and directory tabs are now resolved through shared helpers instead of relying on hard-coded tab names in each route
+
 ---
 
 ### 🛠️ Initial Setup

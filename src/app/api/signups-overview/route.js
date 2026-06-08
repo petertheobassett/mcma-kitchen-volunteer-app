@@ -1,5 +1,10 @@
 import { requireAdmin } from '@/lib/admin-auth';
-import { createSheetsClient, getEventsSheetName } from '@/lib/google-sheets';
+import {
+  createSheetsClient,
+  getEventsSheetName,
+  getVolunteerDirectorySheetName,
+  getVolunteerSignupsSheetName,
+} from '@/lib/google-sheets';
 
 export async function GET(request) {
   const unauthorized = requireAdmin(request);
@@ -9,10 +14,12 @@ export async function GET(request) {
     const sheets = createSheetsClient(['https://www.googleapis.com/auth/spreadsheets.readonly']);
     const spreadsheetId = process.env.GOOGLE_SHEET_ID;
     const eventsSheetName = await getEventsSheetName(sheets, spreadsheetId);
+    const signupsSheetName = await getVolunteerSignupsSheetName(sheets, spreadsheetId);
+    const directorySheetName = await getVolunteerDirectorySheetName(sheets, spreadsheetId);
 
     const [signupsRes, directoryRes, eventsRes] = await Promise.all([
-      sheets.spreadsheets.values.get({ spreadsheetId, range: 'Volunteer Signups' }),
-      sheets.spreadsheets.values.get({ spreadsheetId, range: 'Volunteer Directory' }),
+      sheets.spreadsheets.values.get({ spreadsheetId, range: signupsSheetName }),
+      sheets.spreadsheets.values.get({ spreadsheetId, range: directorySheetName }),
       sheets.spreadsheets.values.get({ spreadsheetId, range: eventsSheetName }),
     ]);
 
@@ -21,7 +28,8 @@ export async function GET(request) {
     const events = eventsRes.data.values || [];
 
     const eventRows = events.slice(1).filter(row => row[0]?.trim() && row[1]?.trim());
-    const volunteerCols = [5, 7, 9, 11, 13, 15];
+    const volunteersNeededIndex = 3;
+    const volunteerCols = [6, 8, 10, 12, 14, 16];
 
     const normalize = str =>
       (str || '').replace(/\s+/g, ' ').trim().toLowerCase();
@@ -66,15 +74,23 @@ export async function GET(request) {
       });
       if (!match) return 0;
 
+      const requestedVolunteers = Number.parseInt(
+        String(match[volunteersNeededIndex] || '').trim(),
+        10
+      );
+      const volunteersNeeded = Number.isFinite(requestedVolunteers)
+        ? Math.max(0, Math.min(volunteerCols.length, requestedVolunteers))
+        : volunteerCols.length;
+
       let filled = 0;
       for (const col of volunteerCols) {
         if (match[col]?.trim()) filled++;
       }
 
-      return 6 - filled;
+      return Math.max(0, volunteersNeeded - filled);
     };
 
-    const enriched = signups.map(([timestamp, eventName, eventDate, name, phone, email]) => {
+    const enriched = signups.map(([timestamp, eventName, eventDate, name, phone, email], index) => {
       const safeName = (name || '').trim();
       const safePhone = (phone || '').trim();
       const safeEmail = (email || '').trim();
@@ -94,6 +110,7 @@ export async function GET(request) {
       const spotsLeft = getSpotsLeft(eventName, eventDate);
 
       return {
+        id: `signup-row-${index + 2}`,
         name: safeName,
         phone: safePhone,
         email: safeEmail,

@@ -108,7 +108,7 @@ export default function Home() {
   }
 
   function renderEventGroup(eventsList, title, color) {
-    const ATTENDANCE_COLUMN_START = 18;
+    const ATTENDANCE_COLUMN_START = 19;
     const isPast = color === 'black';
 
     return (
@@ -123,7 +123,7 @@ export default function Home() {
           });
 
           const [
-            , eventName = '', expected = '', lead = '', leadPhone = '',
+            , eventName = '', expected = '', volunteersNeeded = '', lead = '', leadPhone = '',
             vol1 = '', phone1 = '', vol2 = '', phone2 = '',
             vol3 = '', phone3 = '', vol4 = '', phone4 = '',
             vol5 = '', phone5 = '', vol6 = '', phone6 = '',
@@ -142,6 +142,11 @@ export default function Home() {
                 {expected && (
                   <div style={{ marginTop: '6px', fontSize: '0.95em' }}>
                     Expected attendees: {expected}
+                  </div>
+                )}
+                {volunteersNeeded && (
+                  <div style={{ marginTop: '6px', fontSize: '0.95em' }}>
+                    Volunteers needed: {volunteersNeeded}
                   </div>
                 )}
                 {lead && (

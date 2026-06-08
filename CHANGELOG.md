@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+### Changed
+- Updated spreadsheet parsing to support the new event layout:
+  - `D` = `VOLUNTEERS NEEDED`
+  - `E/F` = `Kitchen Lead` and lead phone
+  - `G/H, I/J, K/L, M/N, O/P, Q/R` = volunteer name/phone pairs
+  - `S:X` = volunteer attendance markers
+- Volunteer capacity is now read per event from the `VOLUNTEERS NEEDED` column instead of assuming a fixed six-volunteer limit
+- Volunteer Dashboard now reads the shifted lead, volunteer, and attendance columns correctly
+- Admin signup review now assigns a stable per-row id so duplicate signup rows do not trigger React key collisions
+- Google Sheets tab lookup now supports `Schedule of Events` as well as year-prefixed schedule tabs, and signup/directory routes now use shared tab-name resolution helpers instead of hard-coded tab labels
+
 ## [1.1.2] – 2025-12-06
 ### Security
 - 🛡️ **CRITICAL**: Updated Next.js from 15.3.2 to 15.3.6 (fixes CVE-2025-66478)

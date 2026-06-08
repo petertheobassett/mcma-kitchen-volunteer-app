@@ -15,8 +15,8 @@ export async function POST(req) {
       !Number.isInteger(parsedIndex) ||
       parsedRow < 2 ||
       parsedRow > 1000 ||
-      parsedIndex < 18 ||
-      parsedIndex > 23 ||
+      parsedIndex < 19 ||
+      parsedIndex > 24 ||
       typeof checked !== 'boolean'
     ) {
       return Response.json({ error: 'Invalid attendance payload' }, { status: 400 });

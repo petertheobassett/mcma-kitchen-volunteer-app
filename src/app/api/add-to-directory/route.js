@@ -1,6 +1,10 @@
 import { requireAdmin } from '@/lib/admin-auth';
 import { formatUsPhone, normalizeEmail, normalizeText, sanitizeForSheetCell } from '@/lib/input-security';
-import { createSheetsClient } from '@/lib/google-sheets';
+import {
+  createSheetsClient,
+  getSheetRange,
+  getVolunteerDirectorySheetName,
+} from '@/lib/google-sheets';
 
 export async function POST(req) {
   const unauthorized = requireAdmin(req);
@@ -18,8 +22,9 @@ export async function POST(req) {
 
     const sheets = createSheetsClient(['https://www.googleapis.com/auth/spreadsheets']);
     const spreadsheetId = process.env.GOOGLE_SHEET_ID;
+    const directorySheetName = await getVolunteerDirectorySheetName(sheets, spreadsheetId);
 
-    const directoryRange = 'Volunteer Directory!A2:C1000';
+    const directoryRange = getSheetRange(directorySheetName, 'A2:C1000');
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId,
       range: directoryRange,
@@ -33,15 +38,15 @@ export async function POST(req) {
 
     const updates = [
       {
-        range: `Volunteer Directory!A${sheetRow}`,
+        range: getSheetRange(directorySheetName, `A${sheetRow}`),
         values: [[sanitizeForSheetCell(name)]],
       },
       {
-        range: `Volunteer Directory!B${sheetRow}`,
+        range: getSheetRange(directorySheetName, `B${sheetRow}`),
         values: [[sanitizeForSheetCell(formattedPhone)]],
       },
       {
-        range: `Volunteer Directory!C${sheetRow}`,
+        range: getSheetRange(directorySheetName, `C${sheetRow}`),
         values: [[sanitizeForSheetCell(email)]],
       },
     ];

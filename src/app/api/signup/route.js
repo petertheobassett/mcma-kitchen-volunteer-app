@@ -9,7 +9,12 @@ import {
   sanitizeForSheetCell,
 } from '@/lib/input-security';
 import { rateLimit } from '@/lib/rate-limit';
-import { createSheetsClient, getEventsSheetName, getSheetRange } from '@/lib/google-sheets';
+import {
+  createSheetsClient,
+  getEventsSheetName,
+  getSheetRange,
+  getVolunteerSignupsSheetName,
+} from '@/lib/google-sheets';
 
 const RECAPTCHA_ACTION = 'submit';
 const CAPTCHA_TOKEN_MAX_AGE_MS = 5 * 60 * 1000;
@@ -94,7 +99,8 @@ function hasFreshCaptchaTimestamp(challengeTimestamp) {
 
 function findEventMatch(rows, eventName, eventDate) {
   const normalize = (value) => (value || '').replace(/\s+/g, ' ').trim().toLowerCase();
-  const volunteerColumns = [5, 7, 9, 11, 13, 15];
+  const volunteersNeededIndex = 3;
+  const volunteerColumns = [6, 8, 10, 12, 14, 16];
   const normalizedEventName = normalize(eventName);
   const toIsoDate = (value) => {
     if (!value) return '';
@@ -117,13 +123,18 @@ function findEventMatch(rows, eventName, eventDate) {
 
   if (!match) return { found: false, spotsLeft: 0 };
 
+  const requestedVolunteers = Number.parseInt(String(match[volunteersNeededIndex] || '').trim(), 10);
+  const volunteersNeeded = Number.isFinite(requestedVolunteers)
+    ? Math.max(0, Math.min(volunteerColumns.length, requestedVolunteers))
+    : volunteerColumns.length;
+
   const filledSpots = volunteerColumns.reduce((count, column) => {
     return match[column]?.trim() ? count + 1 : count;
   }, 0);
 
   return {
     found: true,
-    spotsLeft: Math.max(0, 6 - filledSpots),
+    spotsLeft: Math.max(0, volunteersNeeded - filledSpots),
   };
 }
 
@@ -185,6 +196,7 @@ export async function POST(request) {
     const sheets = createSheetsClient(['https://www.googleapis.com/auth/spreadsheets']);
     const sheetId = process.env.GOOGLE_SHEET_ID;
     const eventsSheetName = await getEventsSheetName(sheets, sheetId);
+    const signupsSheetName = await getVolunteerSignupsSheetName(sheets, sheetId);
 
     const eventsResponse = await sheets.spreadsheets.values.get({
       spreadsheetId: sheetId,
@@ -233,7 +245,7 @@ export async function POST(request) {
 
     await sheets.spreadsheets.values.append({
       spreadsheetId: sheetId,
-      range: 'Volunteer Signups!A:F',
+      range: getSheetRange(signupsSheetName, 'A:F'),
       valueInputOption: 'RAW',
       insertDataOption: 'INSERT_ROWS',
       requestBody: {

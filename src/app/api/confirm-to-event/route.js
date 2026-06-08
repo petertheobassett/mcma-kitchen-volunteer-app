@@ -59,10 +59,16 @@ export async function POST(req) {
     }
 
     const row = data[matchIndex];
-    const volunteerCols = [5, 7, 9, 11, 13, 15];
+    const volunteersNeededIndex = 3;
+    const volunteerCols = [6, 8, 10, 12, 14, 16];
+    const requestedVolunteers = Number.parseInt(String(row[volunteersNeededIndex] || '').trim(), 10);
+    const volunteersNeeded = Number.isFinite(requestedVolunteers)
+      ? Math.max(0, Math.min(volunteerCols.length, requestedVolunteers))
+      : volunteerCols.length;
+    const availableVolunteerCols = volunteerCols.slice(0, volunteersNeeded);
 
     let emptyCol = null;
-    for (const col of volunteerCols) {
+    for (const col of availableVolunteerCols) {
       const val = row[col]?.trim();
       if (!val) {
         emptyCol = col;
