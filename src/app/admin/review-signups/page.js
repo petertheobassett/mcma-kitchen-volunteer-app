@@ -11,8 +11,10 @@ export default function ReviewSignupsPage() {
   const [removedRows, setRemovedRows] = useState([]);
   const [fadingRows, setFadingRows] = useState([]);
   const [confirmedRows, setConfirmedRows] = useState([]);
+  const [pendingRemoval, setPendingRemoval] = useState(null);
 
   const getSignupKey = (vol) => vol.id;
+  const statusTone = getStatusTone(statusMessage);
 
   const fetchSignups = async () => {
     try {
@@ -106,13 +108,20 @@ export default function ReviewSignupsPage() {
   const handleClearRecord = async (vol, row) => {
     const key = getSignupKey(vol);
     setStatusRow(row);
-    setStatusMessage('🗑️ Clearing signup record...');
+    setStatusMessage('⏳ Removing volunteer from the event...');
+    setPendingRemoval(null);
 
     try {
       const res = await fetch('/api/delete-signup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sheetRow: vol.sheetRow }),
+        body: JSON.stringify({
+          sheetRow: vol.sheetRow,
+          name: vol.name,
+          phone: vol.phone,
+          eventName: vol.event,
+          eventDate: vol.eventDate,
+        }),
       });
 
       if (res.status === 401) {
@@ -122,11 +131,11 @@ export default function ReviewSignupsPage() {
 
       const result = await res.json();
       if (!res.ok) {
-        setStatusMessage(`❌ ${result.error || 'Failed to clear signup record.'}`);
+        setStatusMessage(`❌ ${result.error || 'Failed to remove volunteer from the event.'}`);
         return;
       }
 
-      setStatusMessage('🗑️ Signup record cleared');
+      setStatusMessage('✅ Volunteer removed from Volunteer Signups and Schedule of Events');
       setFadingRows((prev) => [...prev, key]);
 
       setTimeout(() => {
@@ -137,8 +146,16 @@ export default function ReviewSignupsPage() {
       }, 700);
     } catch (err) {
       console.error('❌ Clear signup error:', err);
-      setStatusMessage('❌ Failed to clear signup record.');
+      setStatusMessage('❌ Failed to remove volunteer from the event.');
     }
+  };
+
+  const promptRemoval = (vol, row) => {
+    setPendingRemoval({ vol, row });
+  };
+
+  const dismissRemovalPrompt = () => {
+    setPendingRemoval(null);
   };
 
   function parseYMDToLocal(dateStr) {
@@ -236,29 +253,87 @@ export default function ReviewSignupsPage() {
                   </div>
                 </div>
 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                <div style={actionRowStyle}>
                   {vol.spotsLeft === 0 ? (
-                    <button disabled style={buttonStyle('gray')}>
+                    <button disabled style={{ ...buttonStyle('gray'), ...actionButtonStyle }}>
                       ❌ Event Full
                     </button>
                   ) : vol.lastEvent === vol.event ? (
-                    <button disabled style={buttonStyle('green')}>
+                    <button disabled style={{ ...buttonStyle('green'), ...actionButtonStyle }}>
                       ✅ Volunteer Confirmed
                     </button>
                   ) : (
-                    <button onClick={() => handleConfirm(vol, i)} style={buttonStyle('blue')}>
+                    <button
+                      onClick={() => handleConfirm(vol, i)}
+                      style={{ ...buttonStyle('blue'), ...actionButtonStyle }}
+                    >
                       ✅ Confirm to Event
                     </button>
                   )}
-                  <button onClick={() => handleClearRecord(vol, i)} style={buttonStyle('red')}>
-                    🗑️ Clear Record
+                  <button
+                    onClick={() => promptRemoval(vol, i)}
+                    style={{ ...buttonStyle('red'), ...actionButtonStyle }}
+                  >
+                    🗑️ Remove From Event
                   </button>
                 </div>
 
-                {statusRow === i && <div style={inlineToastStyle}>{statusMessage}</div>}
+                {statusRow === i && (
+                  <div style={{ ...inlineStatusStyle, ...inlineStatusToneStyles[statusTone] }}>
+                    {statusMessage}
+                  </div>
+                )}
               </div>
             );
           })}
+
+        {pendingRemoval && (
+          <div style={modalBackdropStyle} onClick={dismissRemovalPrompt}>
+            <div
+              style={modalCardStyle}
+              onClick={(event) => event.stopPropagation()}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="remove-volunteer-title"
+            >
+              <div style={modalBadgeStyle}>Remove Volunteer</div>
+              <h3 id="remove-volunteer-title" style={modalTitleStyle}>
+                Remove {pendingRemoval.vol.name} from this event?
+              </h3>
+              <p style={modalBodyStyle}>
+                This will remove them from both <strong>Volunteer Signups</strong> and the matching
+                <strong> Schedule of Events</strong> row.
+              </p>
+              <div style={modalEventSummaryStyle}>
+                <div>{pendingRemoval.vol.event}</div>
+                <div style={modalEventMetaStyle}>
+                  {getWeekdayAbbr(pendingRemoval.vol.eventDate)} {parseYMDToLocal(pendingRemoval.vol.eventDate).toLocaleDateString('en-US', {
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric',
+                    timeZone: 'America/Los_Angeles',
+                  })}
+                </div>
+              </div>
+              <div style={modalActionRowStyle}>
+                <button
+                  type="button"
+                  onClick={dismissRemovalPrompt}
+                  style={modalSecondaryButtonStyle}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleClearRecord(pendingRemoval.vol, pendingRemoval.row)}
+                  style={modalDangerButtonStyle}
+                >
+                  Remove From Event
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         <style jsx global>{`
           body {
@@ -302,6 +377,13 @@ export default function ReviewSignupsPage() {
   );
 }
 
+function getStatusTone(message) {
+  if (!message) return 'neutral';
+  if (message.startsWith('✅')) return 'success';
+  if (message.startsWith('❌')) return 'error';
+  return 'neutral';
+}
+
 const pageWrapper = {
   maxWidth: 720,
   margin: '0 auto',
@@ -342,14 +424,43 @@ const buttonStyle = (color) => ({
   cursor: color === 'gray' ? 'not-allowed' : 'pointer',
 });
 
-const inlineToastStyle = {
-  marginTop: '12px',
-  backgroundColor: '#ff0003',
-  color: '#fff',
-  padding: '8px 12px',
-  borderRadius: '6px',
-  fontSize: '0.9em',
-  textAlign: 'center',
+const actionRowStyle = {
+  display: 'flex',
+  gap: '10px',
+  flexWrap: 'wrap',
+};
+
+const actionButtonStyle = {
+  flex: '1 1 220px',
+};
+
+const inlineStatusStyle = {
+  marginTop: '14px',
+  padding: '12px 14px',
+  borderRadius: '12px',
+  fontSize: '0.93em',
+  fontWeight: 600,
+  lineHeight: 1.4,
+  border: '1px solid transparent',
+  boxShadow: '0 8px 24px rgba(15, 23, 42, 0.06)',
+};
+
+const inlineStatusToneStyles = {
+  success: {
+    color: '#166534',
+    background: '#ecfdf3',
+    borderColor: '#bbf7d0',
+  },
+  error: {
+    color: '#991b1b',
+    background: '#fef2f2',
+    borderColor: '#fecaca',
+  },
+  neutral: {
+    color: '#1f2937',
+    background: '#f8fafc',
+    borderColor: '#dbe3ee',
+  },
 };
 
 const loaderWrapper = {
@@ -376,4 +487,104 @@ const checkmarkStyle = {
   fontSize: '1.5em',
   opacity: 1,
   transition: 'opacity 0.3s ease',
+};
+
+const modalBackdropStyle = {
+  position: 'fixed',
+  inset: 0,
+  background: 'rgba(15, 23, 42, 0.38)',
+  backdropFilter: 'blur(8px)',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  padding: '24px',
+  zIndex: 1000,
+};
+
+const modalCardStyle = {
+  width: '100%',
+  maxWidth: '540px',
+  background: 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)',
+  border: '1px solid rgba(148, 163, 184, 0.28)',
+  borderRadius: '24px',
+  padding: '28px',
+  boxShadow: '0 30px 80px rgba(15, 23, 42, 0.22)',
+};
+
+const modalBadgeStyle = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  padding: '6px 10px',
+  borderRadius: '999px',
+  background: '#fef2f2',
+  color: '#991b1b',
+  border: '1px solid #fecaca',
+  fontSize: '0.78em',
+  fontWeight: 700,
+  letterSpacing: '0.02em',
+  textTransform: 'uppercase',
+};
+
+const modalTitleStyle = {
+  margin: '16px 0 10px',
+  fontSize: '1.65em',
+  lineHeight: 1.15,
+  fontWeight: 700,
+  color: '#0f172a',
+};
+
+const modalBodyStyle = {
+  margin: 0,
+  fontSize: '1.02em',
+  lineHeight: 1.6,
+  color: '#475569',
+};
+
+const modalEventSummaryStyle = {
+  marginTop: '18px',
+  padding: '16px 18px',
+  borderRadius: '16px',
+  background: '#ffffff',
+  border: '1px solid #e2e8f0',
+  color: '#0f172a',
+  fontWeight: 600,
+  boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.7)',
+};
+
+const modalEventMetaStyle = {
+  marginTop: '6px',
+  fontSize: '0.92em',
+  fontWeight: 500,
+  color: '#64748b',
+};
+
+const modalActionRowStyle = {
+  display: 'flex',
+  justifyContent: 'flex-end',
+  gap: '12px',
+  flexWrap: 'wrap',
+  marginTop: '22px',
+};
+
+const modalSecondaryButtonStyle = {
+  padding: '11px 16px',
+  borderRadius: '12px',
+  border: '1px solid #cbd5e1',
+  background: '#ffffff',
+  color: '#334155',
+  fontSize: '0.95em',
+  fontWeight: 600,
+  cursor: 'pointer',
+};
+
+const modalDangerButtonStyle = {
+  padding: '11px 16px',
+  borderRadius: '12px',
+  border: '1px solid #b91c1c',
+  background: '#c0392b',
+  color: '#ffffff',
+  fontSize: '0.95em',
+  fontWeight: 700,
+  cursor: 'pointer',
+  boxShadow: '0 10px 24px rgba(192, 57, 43, 0.22)',
 };
