@@ -15,20 +15,21 @@ import {
   getSheetRange,
   getVolunteerSignupsSheetName,
 } from '@/lib/google-sheets';
+import {
+  EVENT_TIME_ZONE,
+  formatCalendarDateTime,
+  formatEventTimeRange,
+  getEventScheduleFromRow,
+} from '@/lib/event-schedule';
 
 const RECAPTCHA_ACTION = 'submit';
 const CAPTCHA_TOKEN_MAX_AGE_MS = 5 * 60 * 1000;
 const DEFAULT_CAPTCHA_SCORE_THRESHOLD = 0.5;
 
-function generateICS({ eventName, eventDate, name, email }) {
+function generateICS({ eventName, name, email, schedule }) {
   const now = new Date();
-  const [year, month, day] = eventDate.split('-').map(Number);
-  const weekday = new Date(year, month - 1, day).getDay();
-  const startHour = weekday === 6 ? 10 : 16;
-  const startMinute = 30;
-  const startDate = new Date(year, month - 1, day, startHour, startMinute);
-  const endDate = new Date(startDate.getTime() + 3 * 60 * 60 * 1000);
-  const format = (date) => date.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+  const { start, end } = schedule;
+  const formatUtc = (date) => date.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
 
   return `
 BEGIN:VCALENDAR
@@ -36,10 +37,11 @@ VERSION:2.0
 PRODID:-//MCMA Kitchen//EN
 CALSCALE:GREGORIAN
 METHOD:REQUEST
+X-WR-TIMEZONE:${EVENT_TIME_ZONE}
 BEGIN:VEVENT
-DTSTART:${format(startDate)}
-DTEND:${format(endDate)}
-DTSTAMP:${format(now)}
+DTSTART;TZID=${EVENT_TIME_ZONE}:${formatCalendarDateTime(start)}
+DTEND;TZID=${EVENT_TIME_ZONE}:${formatCalendarDateTime(end)}
+DTSTAMP:${formatUtc(now)}
 SUMMARY:MCMA Kitchen - ${escapeIcsText(eventName)}
 DESCRIPTION:Thanks for volunteering, ${escapeIcsText(name)}!
 ORGANIZER;CN=MCMA Kitchen:mailto:${escapeIcsText(process.env.ADMIN_EMAIL || '')}
@@ -53,19 +55,14 @@ END:VCALENDAR
   `.trim();
 }
 
-function getGoogleCalendarURL({ eventName, eventDate, name }) {
-  const [year, month, day] = eventDate.split('-').map(Number);
-  const weekday = new Date(year, month - 1, day).getDay();
-  const startHour = weekday === 6 ? 10 : 16;
-  const startMinute = 30;
-  const start = new Date(year, month - 1, day, startHour, startMinute);
-  const end = new Date(start.getTime() + 3 * 60 * 60 * 1000);
-  const format = (date) => date.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+function getGoogleCalendarURL({ eventName, name, schedule }) {
+  const { start, end } = schedule;
 
   const params = new URLSearchParams({
     action: 'TEMPLATE',
     text: `MCMA Kitchen - ${eventName}`,
-    dates: `${format(start)}/${format(end)}`,
+    dates: `${formatCalendarDateTime(start)}/${formatCalendarDateTime(end)}`,
+    ctz: EVENT_TIME_ZONE,
     details: `Volunteer sign-up for ${eventName}. Thanks, ${name}!`,
     location: 'MCMA Kitchen',
   });
@@ -121,7 +118,7 @@ function findEventMatch(rows, eventName, eventDate) {
     return rowDate === eventDate && rowName === normalizedEventName;
   });
 
-  if (!match) return { found: false, spotsLeft: 0 };
+  if (!match) return { found: false, spotsLeft: 0, row: null };
 
   const requestedVolunteers = Number.parseInt(String(match[volunteersNeededIndex] || '').trim(), 10);
   const volunteersNeeded = Number.isFinite(requestedVolunteers)
@@ -135,6 +132,7 @@ function findEventMatch(rows, eventName, eventDate) {
   return {
     found: true,
     spotsLeft: Math.max(0, volunteersNeeded - filledSpots),
+    row: match,
   };
 }
 
@@ -200,7 +198,7 @@ export async function POST(request) {
 
     const eventsResponse = await sheets.spreadsheets.values.get({
       spreadsheetId: sheetId,
-      range: getSheetRange(eventsSheetName, 'A2:Q1000'),
+      range: getSheetRange(eventsSheetName, 'A2:S1000'),
     });
 
     const eventRows = eventsResponse.data.values || [];
@@ -233,6 +231,8 @@ export async function POST(request) {
       day: '2-digit',
       year: '2-digit',
     });
+    const schedule = getEventScheduleFromRow(eventDate, eventMatch.row);
+    const formattedEventTime = formatEventTimeRange(schedule);
 
     const newRow = [
       sanitizeForSheetCell(formattedTimestamp),
@@ -254,8 +254,8 @@ export async function POST(request) {
     });
 
     const resend = new Resend(process.env.RESEND_API_KEY);
-    const calendarICS = generateICS({ eventName, eventDate, name, email });
-    const googleCalendarLink = getGoogleCalendarURL({ eventName, eventDate, name });
+    const calendarICS = generateICS({ eventName, name, email, schedule });
+    const googleCalendarLink = getGoogleCalendarURL({ eventName, name, schedule });
     const logo = 'https://mcma.s3.us-east-1.amazonaws.com/mcmaLogo.png';
     const adminEmail = process.env.ADMIN_EMAIL || 'hello@mcmakitchen.com';
 
@@ -264,6 +264,7 @@ export async function POST(request) {
     const htmlPhone = escapeHtml(formattedPhone);
     const htmlEmail = escapeHtml(email);
     const htmlFormattedEventDate = escapeHtml(formattedEventDate);
+    const htmlFormattedEventTime = escapeHtml(formattedEventTime);
 
     const volunteerHeading = 'Thank you for signing up!';
     const volunteerIntro = `<p style="font-size:14px; color:#444; text-align:center; max-width:360px; margin:0 auto 24px;">
@@ -279,6 +280,7 @@ export async function POST(request) {
         <h2 style="text-align:center; color:#000;">${volunteerHeading}</h2>
         <p><strong>Event:</strong> ${htmlEventName}</p>
         <p><strong>Date:</strong> ${htmlFormattedEventDate}</p>
+        <p><strong>Time:</strong> ${htmlFormattedEventTime}</p>
         <p><strong>Name:</strong> ${htmlName}</p>
         <p><strong>Phone:</strong> ${htmlPhone}</p>
         <p><strong>Email:</strong> <a href="mailto:${htmlEmail}" style="color:#007bff; text-decoration:none;">${htmlEmail}</a></p>
@@ -299,6 +301,7 @@ Thanks for signing up!
 
 Event: ${eventName}
 Date: ${formattedEventDate}
+Time: ${formattedEventTime}
 Name: ${name}
 Phone: ${formattedPhone}
 Email: ${email}
@@ -333,7 +336,7 @@ Email: ${email}
 
     return Response.json({
       status: 'OK',
-      submitted: { eventName, formattedEventDate, name, formattedPhone, email },
+      submitted: { eventName, formattedEventDate, formattedEventTime, name, formattedPhone, email },
     });
   } catch (error) {
     console.error('Signup error:', error);

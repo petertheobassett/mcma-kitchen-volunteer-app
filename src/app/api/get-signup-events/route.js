@@ -1,4 +1,5 @@
 import { createSheetsClient, getEventsSheetName, getSheetRange } from '@/lib/google-sheets';
+import { formatEventTimeRange, getEventScheduleFromRow } from '@/lib/event-schedule';
 
 export async function GET() {
   try {
@@ -8,7 +9,7 @@ export async function GET() {
 
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId: sheetId,
-      range: getSheetRange(eventsSheetName, 'A2:Q1000'),
+      range: getSheetRange(eventsSheetName, 'A2:S1000'),
     });
 
     const rows = response.data.values || [];
@@ -47,12 +48,14 @@ export async function GET() {
 
         const spotsLeft = Math.max(0, volunteersNeeded - filledSpots);
         const spotsLeftLabel = spotsLeft === 1 ? '1 spot left' : `${spotsLeft} spots left`;
+        const timeLabel = formatEventTimeRange(getEventScheduleFromRow(`${parsed.getFullYear()}-${mm}-${dd}`, row));
 
         return {
           name: name.trim(),
           date: `${parsed.getFullYear()}-${mm}-${dd}`,
           label: `${parsed.toDateString()} – ${name.trim()} (${spotsLeft === 0 ? 'FULL' : spotsLeftLabel})`,
           spotsLeft,
+          timeLabel,
         };
       })
       .filter(Boolean);

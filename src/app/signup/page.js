@@ -14,6 +14,7 @@ export default function SignupPage() {
   const [status, setStatus] = useState(null);
   const [submittedData, setSubmittedData] = useState(null);
   const eventMenuRef = useRef(null);
+  const selectedEvent = events.find(event => event.date === eventDate && event.name === eventName) || null;
 
   useEffect(() => {
     const today = new Date();
@@ -162,6 +163,7 @@ export default function SignupPage() {
               <h3 style={{ marginBottom: 12 }}>✅ You're signed up!</h3>
               <p><strong>Event:</strong> {submittedData.eventName}</p>
               <p><strong>Date:</strong> {submittedData.formattedEventDate}</p>
+              {submittedData.formattedEventTime && <p><strong>Time:</strong> {submittedData.formattedEventTime}</p>}
               <p><strong>Name:</strong> {submittedData.name}</p>
               <p><strong>Phone:</strong> {submittedData.formattedPhone}</p>
               <p><strong>Email:</strong> {submittedData.email}</p>
@@ -193,6 +195,7 @@ export default function SignupPage() {
                       <span style={selectedEventStyle}>
                         <span style={selectedEventNameStyle}>{eventName}</span>
                         <span style={selectedEventDateStyle}>{formatEventDate(eventDate)}</span>
+                        {selectedEvent?.timeLabel && <span style={selectedEventTimeStyle}>{selectedEvent.timeLabel}</span>}
                       </span>
                     ) : (
                       <span style={placeholderStyle}>Select an event</span>
@@ -237,6 +240,7 @@ export default function SignupPage() {
                             <span style={eventOptionTextStyle}>
                               <span style={eventOptionNameStyle}>{event.name}</span>
                               <span style={eventOptionDateStyle}>{formatEventDate(event.date)}</span>
+                              {event.timeLabel && <span style={eventOptionTimeStyle}>{event.timeLabel}</span>}
                             </span>
                             <span
                               style={{
@@ -456,6 +460,11 @@ const selectedEventDateStyle = {
   fontSize: '0.86em',
 };
 
+const selectedEventTimeStyle = {
+  color: '#6b7280',
+  fontSize: '0.82em',
+};
+
 const placeholderStyle = {
   color: '#6b7280',
 };
@@ -517,6 +526,11 @@ const eventOptionNameStyle = {
   textOverflow: 'ellipsis',
   whiteSpace: 'nowrap',
   fontWeight: 600,
+};
+
+const eventOptionTimeStyle = {
+  color: '#6b7280',
+  fontSize: '0.82em',
 };
 
 const eventOptionDateStyle = {
