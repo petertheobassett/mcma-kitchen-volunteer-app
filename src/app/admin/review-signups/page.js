@@ -103,6 +103,44 @@ export default function ReviewSignupsPage() {
     }
   };
 
+  const handleClearRecord = async (vol, row) => {
+    const key = getSignupKey(vol);
+    setStatusRow(row);
+    setStatusMessage('🗑️ Clearing signup record...');
+
+    try {
+      const res = await fetch('/api/delete-signup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sheetRow: vol.sheetRow }),
+      });
+
+      if (res.status === 401) {
+        window.location.href = '/admin/login?next=/admin/review-signups';
+        return;
+      }
+
+      const result = await res.json();
+      if (!res.ok) {
+        setStatusMessage(`❌ ${result.error || 'Failed to clear signup record.'}`);
+        return;
+      }
+
+      setStatusMessage('🗑️ Signup record cleared');
+      setFadingRows((prev) => [...prev, key]);
+
+      setTimeout(() => {
+        setRemovedRows((prev) => [...prev, key]);
+        setFadingRows((prev) => prev.filter((k) => k !== key));
+        setStatusRow(null);
+        fetchSignups();
+      }, 700);
+    } catch (err) {
+      console.error('❌ Clear signup error:', err);
+      setStatusMessage('❌ Failed to clear signup record.');
+    }
+  };
+
   function parseYMDToLocal(dateStr) {
     const [year, month, day] = dateStr.split('-').map(Number);
     return new Date(year, month - 1, day);
@@ -212,6 +250,9 @@ export default function ReviewSignupsPage() {
                       ✅ Confirm to Event
                     </button>
                   )}
+                  <button onClick={() => handleClearRecord(vol, i)} style={buttonStyle('red')}>
+                    🗑️ Clear Record
+                  </button>
                 </div>
 
                 {statusRow === i && <div style={inlineToastStyle}>{statusMessage}</div>}
@@ -288,6 +329,8 @@ const buttonStyle = (color) => ({
       ? '#27ae60'
       : color === 'blue'
       ? '#2980b9'
+      : color === 'red'
+      ? '#c0392b'
       : color === 'orange'
       ? '#f39c12'
       : '#aaa',

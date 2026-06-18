@@ -15,6 +15,7 @@ export default function SignupPage() {
   const [submittedData, setSubmittedData] = useState(null);
   const eventMenuRef = useRef(null);
   const selectedEvent = events.find(event => event.date === eventDate && event.name === eventName) || null;
+  const statusTone = getStatusTone(status);
 
   useEffect(() => {
     const today = new Date();
@@ -160,7 +161,7 @@ export default function SignupPage() {
         {submittedData ? (
           <>
             <div className="confirmation-box" style={confirmationBox}>
-              <h3 style={{ marginBottom: 12 }}>✅ You're signed up!</h3>
+              <h3 style={confirmationHeadingStyle}>✅ You're signed up!</h3>
               <p><strong>Event:</strong> {submittedData.eventName}</p>
               <p><strong>Date:</strong> {submittedData.formattedEventDate}</p>
               {submittedData.formattedEventTime && <p><strong>Time:</strong> {submittedData.formattedEventTime}</p>}
@@ -315,7 +316,7 @@ export default function SignupPage() {
                 Submit
               </button>
 
-              {status && <p style={{ marginTop: 20, fontSize: '0.95em' }}>{status}</p>}
+              {status && <p style={{ ...statusMessageStyle, ...statusToneStyles[statusTone] }}>{status}</p>}
             </form>
             <p style={disclaimerStyle}>
               We respect your privacy. Your information is used only for coordinating volunteers. It will never be sold or shared.
@@ -383,6 +384,13 @@ export default function SignupPage() {
   );
 }
 
+function getStatusTone(status) {
+  if (!status) return 'neutral';
+  if (status.startsWith('✅')) return 'success';
+  if (status.startsWith('❌')) return 'error';
+  return 'neutral';
+}
+
 // Styles
 const containerStyle = {
   maxWidth: 540,
@@ -416,6 +424,14 @@ const labelStyle = {
   fontSize: '0.95em',
   fontWeight: 500,
   color: '#333',
+};
+
+const confirmationHeadingStyle = {
+  marginBottom: 16,
+  fontSize: '1.7em',
+  lineHeight: 1.1,
+  fontWeight: 700,
+  color: '#166534',
 };
 
 const dropdownStyle = {
@@ -536,6 +552,34 @@ const eventOptionTimeStyle = {
 const eventOptionDateStyle = {
   color: '#6b7280',
   fontSize: '0.86em',
+};
+
+const statusMessageStyle = {
+  marginTop: 20,
+  padding: '14px 16px',
+  borderRadius: 12,
+  fontSize: '1.02em',
+  fontWeight: 700,
+  lineHeight: 1.4,
+  border: '1px solid transparent',
+};
+
+const statusToneStyles = {
+  success: {
+    color: '#166534',
+    background: '#dcfce7',
+    borderColor: '#86efac',
+  },
+  error: {
+    color: '#991b1b',
+    background: '#fee2e2',
+    borderColor: '#fca5a5',
+  },
+  neutral: {
+    color: '#1f2937',
+    background: '#f3f4f6',
+    borderColor: '#d1d5db',
+  },
 };
 
 const spotsBadgeStyle = {

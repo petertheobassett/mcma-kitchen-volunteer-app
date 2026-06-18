@@ -111,6 +111,7 @@ export async function GET(request) {
 
       return {
         id: `signup-row-${index + 2}`,
+        sheetRow: index + 2,
         name: safeName,
         phone: safePhone,
         email: safeEmail,

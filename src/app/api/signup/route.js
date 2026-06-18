@@ -136,6 +136,27 @@ function findEventMatch(rows, eventName, eventDate) {
   };
 }
 
+function isDuplicateSignup(rows, eventName, eventDate, name, email) {
+  const normalize = (value) => (value || '').replace(/\s+/g, ' ').trim().toLowerCase();
+  const normalizedEventName = normalize(eventName);
+  const normalizedEventDate = String(eventDate || '').trim();
+  const normalizedName = normalize(name);
+  const normalizedEmail = normalize(email);
+
+  return rows.some((row) => {
+    const rowEventName = normalize(row[1]);
+    const rowEventDate = String(row[2] || '').trim();
+    const rowName = normalize(row[3]);
+    const rowEmail = normalize(row[5]);
+
+    if (rowEventName !== normalizedEventName || rowEventDate !== normalizedEventDate) {
+      return false;
+    }
+
+    return rowEmail === normalizedEmail || rowName === normalizedName;
+  });
+}
+
 export async function POST(request) {
   const clientIp = getClientIp(request);
   const limiter = rateLimit({
@@ -196,18 +217,28 @@ export async function POST(request) {
     const eventsSheetName = await getEventsSheetName(sheets, sheetId);
     const signupsSheetName = await getVolunteerSignupsSheetName(sheets, sheetId);
 
-    const eventsResponse = await sheets.spreadsheets.values.get({
-      spreadsheetId: sheetId,
-      range: getSheetRange(eventsSheetName, 'A2:S1000'),
-    });
+    const [eventsResponse, signupsResponse] = await Promise.all([
+      sheets.spreadsheets.values.get({
+        spreadsheetId: sheetId,
+        range: getSheetRange(eventsSheetName, 'A2:S1000'),
+      }),
+      sheets.spreadsheets.values.get({
+        spreadsheetId: sheetId,
+        range: getSheetRange(signupsSheetName, 'A2:F1000'),
+      }),
+    ]);
 
     const eventRows = eventsResponse.data.values || [];
+    const signupRows = signupsResponse.data.values || [];
     const eventMatch = findEventMatch(eventRows, eventName, eventDate);
     if (!eventMatch.found) {
       return Response.json({ error: 'Selected event is no longer available' }, { status: 400 });
     }
     if (eventMatch.spotsLeft <= 0) {
       return Response.json({ error: 'Selected event is full' }, { status: 409 });
+    }
+    if (isDuplicateSignup(signupRows, eventName, eventDate, name, email)) {
+      return Response.json({ error: 'You are already signed up for this event.' }, { status: 409 });
     }
 
     const now = new Date();
